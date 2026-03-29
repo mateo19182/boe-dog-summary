@@ -1,7 +1,7 @@
 [project]
-name = "tg-summary"
+name = "boe-dog-summary"
 version = "0.1.0"
-description = "Daily Telegram bot that summarizes the DOG (Diario Oficial de Galicia)"
+description = "Daily Telegram bot that summarizes DOG and BOE official bulletins"
 requires-python = ">=3.13"
 dependencies = [
     "feedparser>=6.0.12",
@@ -11,4 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tg-summary = "main:main"
+boe-dog-summary = "tg_summary.main:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from bot import send_summary
+from tg_summary.bot import send_summary
 
 logging.basicConfig(
     level=logging.INFO,

@@ -1,6 +1,6 @@
 import httpx
 
-from config import OPENROUTER_API_KEY, OPENROUTER_MODEL
+from tg_summary.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 
 
 async def analyze(entries_text: str, system_prompt: str) -> str:
