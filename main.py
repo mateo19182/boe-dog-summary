@@ -1,0 +1,17 @@
+import asyncio
+import logging
+
+from bot import send_summary
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+
+def main() -> None:
+    asyncio.run(send_summary())
+
+
+if __name__ == "__main__":
+    main()

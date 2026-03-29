@@ -1,0 +1,14 @@
+[project]
+name = "tg-summary"
+version = "0.1.0"
+description = "Daily Telegram bot that summarizes the DOG (Diario Oficial de Galicia)"
+requires-python = ">=3.13"
+dependencies = [
+    "feedparser>=6.0.12",
+    "httpx>=0.28.1",
+    "python-dotenv>=1.2.2",
+    "python-telegram-bot>=22.7",
+]
+
+[project.scripts]
+tg-summary = "main:main"
