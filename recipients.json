@@ -1,0 +1,53 @@
+{
+  "recipients": [
+    {
+      "name": "Owner",
+      "chat_id": "${TELEGRAM_CHAT_ID}",
+      "bulletins": ["dog", "boe"],
+      "profile": "Autónomo en Galicia con empresa tech (software fitness/deporte + proyectos IA).",
+      "relevance": {
+        "yes": [
+          "Subvenciones y ayudas para autónomos, pymes, empresas tech",
+          "Ayudas a I+D, innovación, digitalización, inteligencia artificial",
+          "Subvenciones sector deporte, fitness, actividad física",
+          "Normativa fiscal o laboral que afecte a autónomos o pymes",
+          "Contratación pública en tech, software, deporte, IA"
+        ],
+        "no": [
+          "Igualdad, impacto social, género, violencia de género",
+          "Gastronomía, turismo rural, agricultura, pesca, ganadería",
+          "Medio ambiente, patrimonio cultural, urbanismo",
+          "Oposiciones, nombramientos, ceses de personal",
+          "Educación primaria/secundaria, becas escolares",
+          "Sanidad pública, farmacia, colegios profesionales"
+        ]
+      }
+    },
+    {
+      "name": "Ainhoa",
+      "chat_id": "${AINHOA_CHAT_ID}",
+      "bulletins": ["dog", "boe"],
+      "profile": "Estudiante de máster en Global Governance and Sustainability, interesada en políticas públicas, justicia social y sostenibilidad.",
+      "relevance": {
+        "yes": [
+          "Sostenibilidad, cambio climático, protección del medio ambiente",
+          "Justicia social, igualdad, inclusión, derechos humanos",
+          "Gobernanza global, políticas públicas, administración",
+          "Energías renovables, transición energética, eficiencia energética",
+          "Urbanismo sostenible, patrimonio cultural, espacios públicos",
+          "Educación superior, becas, universidades, másteres",
+          "Impacto social, género, violencia de género, políticas de igualdad",
+          "Cooperación internacional, desarrollo sostenible, ODS"
+        ],
+        "no": [
+          "Subvenciones específicas para empresas tech o startups",
+          "Software, IA, digitalización empresarial",
+          "Sector deporte, fitness, actividad física comercial",
+          "Normativa fiscal específica para autónomos y pymes",
+          "Contratación pública en tecnología o deporte",
+          "Gastronomía, turismo rural, agricultura industrial, pesca comercial"
+        ]
+      }
+    }
+  ]
+}

@@ -5,23 +5,31 @@ from telegram.constants import ParseMode
 
 from tg_summary.config import (
     BOE_RSS_URL,
-    BOE_SYSTEM_PROMPT,
     DOG_RSS_URL,
-    DOG_SYSTEM_PROMPT,
     TELEGRAM_BOT_TOKEN,
-    TELEGRAM_CHAT_ID,
 )
 from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
 from tg_summary.html_fix import sanitize_telegram_html, validate_telegram_html
 from tg_summary.llm import analyze
+from tg_summary.recipients import load_recipients, build_system_prompt
 
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 4096
 MAX_LLM_RETRIES = 2
 
+BULLETIN_URLS = {
+    "dog": DOG_RSS_URL,
+    "boe": BOE_RSS_URL,
+}
 
-async def _send_telegram(bot: Bot, text: str) -> None:
+BULLETIN_NAMES = {
+    "dog": "DOG",
+    "boe": "BOE",
+}
+
+
+async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
     """Send a message to Telegram, splitting if needed."""
     chunks = [
         text[i : i + MAX_MESSAGE_LENGTH]
@@ -30,15 +38,17 @@ async def _send_telegram(bot: Bot, text: str) -> None:
     for chunk in chunks:
         try:
             await bot.send_message(
-                chat_id=TELEGRAM_CHAT_ID,
+                chat_id=chat_id,
                 text=chunk,
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
-            await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=chunk)
+            await bot.send_message(chat_id=chat_id, text=chunk)
 
 
-async def _process_feed(bot: Bot, name: str, rss_url: str, system_prompt: str) -> None:
+async def _process_feed(
+    bot: Bot, chat_id: str, name: str, rss_url: str, system_prompt: str
+) -> None:
     """Fetch an RSS feed, analyze it, and send the result to Telegram."""
     logger.info("Fetching %s RSS feed...", name)
     entries = fetch_rss_entries(rss_url)
@@ -73,13 +83,31 @@ async def _process_feed(bot: Bot, name: str, rss_url: str, system_prompt: str) -
                     "%s: giving up on valid HTML, sending as plain text", name
                 )
 
-    await _send_telegram(bot, analysis)
-    logger.info("%s summary sent", name)
+    await _send_telegram(bot, chat_id, analysis)
+    logger.info("%s summary sent to %s", name, chat_id)
 
 
 async def send_summary() -> None:
-    """Fetch DOG and BOE, analyze both, and send as separate messages."""
+    """Fetch DOG and BOE, analyze them for each recipient with custom prompts, and send."""
+    recipients = load_recipients()
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    await _process_feed(bot, "DOG", DOG_RSS_URL, DOG_SYSTEM_PROMPT)
-    await _process_feed(bot, "BOE", BOE_RSS_URL, BOE_SYSTEM_PROMPT)
+    for recipient in recipients:
+        logger.info("Processing bulletins for %s...", recipient.name)
+
+        for bulletin in recipient.bulletins:
+            if bulletin not in BULLETIN_URLS:
+                logger.warning(
+                    "Unknown bulletin '%s' for recipient %s", bulletin, recipient.name
+                )
+                continue
+
+            rss_url = BULLETIN_URLS[bulletin]
+            bulletin_name = BULLETIN_NAMES[bulletin]
+            system_prompt = build_system_prompt(
+                bulletin, recipient.profile, recipient.relevance
+            )
+
+            await _process_feed(
+                bot, recipient.chat_id, bulletin_name, rss_url, system_prompt
+            )
