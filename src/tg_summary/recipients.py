@@ -29,7 +29,7 @@ Por cada entrada relevante indica:
 
 Si no hay nada relevante, dilo en una línea.
 
-FORMATO: usa HTML de Telegram. Negrita con <b>, enlaces con <a href="url">texto</a>. No uses Markdown.\
+FORMATO: usa Markdown de Telegram. Negrita con **texto**, enlaces con [texto](url). Evita usar caracteres especiales que requieran escaping: _, *, [, ], (, ), ~, `, >, #, +, -, =, |, {, }, ., !\
 """
 
 

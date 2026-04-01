@@ -90,7 +90,7 @@ boe-dog-summary/
 │       ├── config.py        # Configuration and prompts
 │       ├── llm.py           # OpenRouter API integration
 │       ├── feed.py          # RSS feed fetching
-│       └── html_fix.py      # HTML validation/sanitization
+│       └── markdown_fix.py  # Markdown validation/smart splitting
 ├── .env.example             # Environment variables template
 ├── .gitignore              # Git ignore patterns
 ├── pyproject.toml          # Project configuration

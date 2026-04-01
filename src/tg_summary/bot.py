@@ -9,8 +9,12 @@ from tg_summary.config import (
     TELEGRAM_BOT_TOKEN,
 )
 from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
-from tg_summary.html_fix import sanitize_telegram_html, validate_telegram_html
 from tg_summary.llm import analyze
+from tg_summary.markdown_fix import (
+    escape_markdown_v2,
+    split_markdown_smart,
+    validate_markdown_v2,
+)
 from tg_summary.recipients import load_recipients, build_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -30,20 +34,32 @@ BULLETIN_NAMES = {
 
 
 async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
-    """Send a message to Telegram, splitting if needed."""
-    chunks = [
-        text[i : i + MAX_MESSAGE_LENGTH]
-        for i in range(0, len(text), MAX_MESSAGE_LENGTH)
-    ]
-    for chunk in chunks:
+    """Send a message to Telegram, splitting intelligently at content boundaries."""
+    chunks = split_markdown_smart(text, MAX_MESSAGE_LENGTH)
+
+    for i, chunk in enumerate(chunks):
         try:
             await bot.send_message(
                 chat_id=chat_id,
                 text=chunk,
-                parse_mode=ParseMode.HTML,
+                parse_mode=ParseMode.MARKDOWN_V2,
             )
-        except Exception:
-            await bot.send_message(chat_id=chat_id, text=chunk)
+            logger.info("Sent chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
+        except Exception as e:
+            logger.warning("Failed to send chunk %d with MarkdownV2: %s", i + 1, e)
+            # Fallback: escape markdown and send as plain text
+            safe_text = escape_markdown_v2(chunk)
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=safe_text,
+                )
+                logger.info("Sent chunk %d/%d as plain text", i + 1, len(chunks))
+            except Exception as e2:
+                logger.error(
+                    "Failed to send chunk %d even as plain text: %s", i + 1, e2
+                )
+                raise
 
 
 async def _process_feed(
@@ -62,26 +78,23 @@ async def _process_feed(
     logger.info("Analyzing %s with LLM...", name)
     analysis = await analyze(entries_text, system_prompt)
 
-    # Validate and fix HTML
-    errors = validate_telegram_html(analysis)
+    # Validate Markdown
+    errors = validate_markdown_v2(analysis)
     if errors:
-        logger.warning("%s: invalid HTML from LLM: %s", name, errors)
-        analysis = sanitize_telegram_html(analysis)
-        errors = validate_telegram_html(analysis)
-        if errors:
-            logger.warning("%s: still invalid after sanitize, retrying LLM...", name)
-            for attempt in range(1, MAX_LLM_RETRIES + 1):
-                analysis = await analyze(entries_text, system_prompt)
-                analysis = sanitize_telegram_html(analysis)
-                errors = validate_telegram_html(analysis)
-                if not errors:
-                    logger.info("%s: retry %d produced valid HTML", name, attempt)
-                    break
-                logger.warning("%s: retry %d still invalid: %s", name, attempt, errors)
-            else:
-                logger.warning(
-                    "%s: giving up on valid HTML, sending as plain text", name
-                )
+        logger.warning("%s: invalid Markdown from LLM: %s", name, errors)
+        for attempt in range(1, MAX_LLM_RETRIES + 1):
+            logger.info("%s: retrying LLM attempt %d...", name, attempt)
+            analysis = await analyze(entries_text, system_prompt)
+            errors = validate_markdown_v2(analysis)
+            if not errors:
+                logger.info("%s: retry %d produced valid Markdown", name, attempt)
+                break
+            logger.warning("%s: retry %d still invalid: %s", name, attempt, errors)
+        else:
+            logger.warning(
+                "%s: giving up on valid Markdown, sending as plain text", name
+            )
+            analysis = escape_markdown_v2(analysis)
 
     await _send_telegram(bot, chat_id, analysis)
     logger.info("%s summary sent to %s", name, chat_id)
