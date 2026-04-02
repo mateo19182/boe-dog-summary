@@ -7,10 +7,8 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash-preview")
+INVITE_PASSWORD = os.environ["INVITE_PASSWORD"]
 
 DOG_RSS_URL = "https://www.xunta.gal/diario-oficial-galicia/rss/Sumario_es.rss"
 BOE_RSS_URL = "https://www.boe.es/rss/boe.php"
 EU_FUNDING_RSS_URL = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/rss"
-
-# Default invite password (override in recipients.json)
-DEFAULT_INVITE_PASSWORD = os.environ.get("INVITE_PASSWORD", "SUMMARY2024")

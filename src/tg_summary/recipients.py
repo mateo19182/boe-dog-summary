@@ -95,19 +95,6 @@ def _get_config_path(config_path: Path | str = None) -> Path:
     return Path(config_path)
 
 
-def load_invite_password(config_path: Path | str = None) -> str:
-    """Load the invite password from recipients.json."""
-    config_path = _get_config_path(config_path)
-
-    if not config_path.exists():
-        raise FileNotFoundError(f"Recipients config not found: {config_path}")
-
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    return data.get("invite_password", "")
-
-
 def load_recipients(config_path: Path | str = None) -> list[Recipient]:
     config_path = _get_config_path(config_path)
 

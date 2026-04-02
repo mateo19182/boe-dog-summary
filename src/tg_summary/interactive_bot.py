@@ -18,9 +18,9 @@ from telegram.ext import (
 
 from tg_summary.config import (
     BOE_RSS_URL,
-    DEFAULT_INVITE_PASSWORD,
     DOG_RSS_URL,
     EU_FUNDING_RSS_URL,
+    INVITE_PASSWORD,
     TELEGRAM_BOT_TOKEN,
 )
 from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
@@ -31,7 +31,6 @@ from tg_summary.recipients import (
     add_recipient,
     build_system_prompt,
     find_recipient_by_chat_id,
-    load_invite_password,
     load_recipients,
     update_recipient,
 )
@@ -142,9 +141,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # Check password
-    invite_password = load_invite_password() or DEFAULT_INVITE_PASSWORD
-
-    if not args or args[0] != invite_password:
+    if not args or args[0] != INVITE_PASSWORD:
         await update.message.reply_text(
             "❌ Contraseña incorrecta o no proporcionada.\n\n"
             "Para registrarte, usa: /start <contraseña>\n\n"
