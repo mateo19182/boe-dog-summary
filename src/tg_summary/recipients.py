@@ -22,15 +22,14 @@ class Recipient:
 def _get_format_instructions() -> str:
     return """\
 Por cada entrada relevante indica:
-- Título breve
+- Título breve (en negrita)
 - Por qué es relevante (1 línea)
-- Enlace
+- Enlace como [Ver enlace](URL)
 - Plazo si lo hay
 
 Si no hay nada relevante, dilo en una línea.
 
-FORMATO: usa Markdown de Telegram. Negrita con **texto**, enlaces con [texto](url). Evita usar caracteres especiales que requieran escaping: _, *, [, ], (, ), ~, `, >, #, +, -, =, |, {, }, ., !\
-"""
+FORMATO: Usa markdown simple. Negrita: **texto**. Enlaces: [texto](url). No uses caracteres especiales que requieran escape."""
 
 
 def _build_relevance_text(relevance: dict[str, list[str]]) -> str:

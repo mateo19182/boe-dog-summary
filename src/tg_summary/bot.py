@@ -10,17 +10,12 @@ from tg_summary.config import (
 )
 from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
 from tg_summary.llm import analyze
-from tg_summary.markdown_fix import (
-    escape_markdown_v2,
-    split_markdown_smart,
-    validate_markdown_v2,
-)
+from tg_summary.markdown_fix import split_markdown_smart
 from tg_summary.recipients import load_recipients, build_system_prompt
 
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 4096
-MAX_LLM_RETRIES = 2
 
 BULLETIN_URLS = {
     "dog": DOG_RSS_URL,
@@ -47,12 +42,13 @@ async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
             logger.info("Sent chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
         except Exception as e:
             logger.warning("Failed to send chunk %d with MarkdownV2: %s", i + 1, e)
-            # Fallback: escape markdown and send as plain text
-            safe_text = escape_markdown_v2(chunk)
+            # Fallback: send as plain text (strip markdown)
+            plain_text = chunk.replace("**", "").replace("__", "").replace("`", "")
+            plain_text = plain_text.replace("[", "").replace("]", "")
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=safe_text,
+                    text=plain_text,
                 )
                 logger.info("Sent chunk %d/%d as plain text", i + 1, len(chunks))
             except Exception as e2:
@@ -77,24 +73,6 @@ async def _process_feed(
 
     logger.info("Analyzing %s with LLM...", name)
     analysis = await analyze(entries_text, system_prompt)
-
-    # Validate Markdown
-    errors = validate_markdown_v2(analysis)
-    if errors:
-        logger.warning("%s: invalid Markdown from LLM: %s", name, errors)
-        for attempt in range(1, MAX_LLM_RETRIES + 1):
-            logger.info("%s: retrying LLM attempt %d...", name, attempt)
-            analysis = await analyze(entries_text, system_prompt)
-            errors = validate_markdown_v2(analysis)
-            if not errors:
-                logger.info("%s: retry %d produced valid Markdown", name, attempt)
-                break
-            logger.warning("%s: retry %d still invalid: %s", name, attempt, errors)
-        else:
-            logger.warning(
-                "%s: giving up on valid Markdown, sending as plain text", name
-            )
-            analysis = escape_markdown_v2(analysis)
 
     await _send_telegram(bot, chat_id, analysis)
     logger.info("%s summary sent to %s", name, chat_id)
