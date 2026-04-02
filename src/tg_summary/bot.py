@@ -1,4 +1,5 @@
 import logging
+import re
 
 from telegram import Bot
 from telegram.constants import ParseMode
@@ -28,23 +29,34 @@ BULLETIN_NAMES = {
 }
 
 
+def markdown_to_html(text: str) -> str:
+    """Convert simple markdown to HTML for Telegram."""
+    # Convert **bold** to <b>bold</b>
+    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+    # Convert [text](url) to <a href="url">text</a>
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+    return text
+
+
 async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
-    """Send a message to Telegram, splitting intelligently at content boundaries."""
-    chunks = split_markdown_smart(text, MAX_MESSAGE_LENGTH)
+    """Send a message to Telegram using HTML format."""
+    # Convert markdown to HTML
+    html_text = markdown_to_html(text)
+
+    chunks = split_markdown_smart(html_text, MAX_MESSAGE_LENGTH)
 
     for i, chunk in enumerate(chunks):
         try:
             await bot.send_message(
                 chat_id=chat_id,
                 text=chunk,
-                parse_mode=ParseMode.MARKDOWN_V2,
+                parse_mode=ParseMode.HTML,
             )
             logger.info("Sent chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
         except Exception as e:
-            logger.warning("Failed to send chunk %d with MarkdownV2: %s", i + 1, e)
-            # Fallback: send as plain text (strip markdown)
-            plain_text = chunk.replace("**", "").replace("__", "").replace("`", "")
-            plain_text = plain_text.replace("[", "").replace("]", "")
+            logger.warning("Failed to send chunk %d with HTML: %s", i + 1, e)
+            # Fallback: send as plain text (strip HTML tags)
+            plain_text = re.sub(r"<[^>]+>", "", chunk)
             try:
                 await bot.send_message(
                     chat_id=chat_id,
