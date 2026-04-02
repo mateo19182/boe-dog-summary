@@ -10,3 +10,7 @@ OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash-p
 
 DOG_RSS_URL = "https://www.xunta.gal/diario-oficial-galicia/rss/Sumario_es.rss"
 BOE_RSS_URL = "https://www.boe.es/rss/boe.php"
+EU_FUNDING_RSS_URL = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/rss"
+
+# Default invite password (override in recipients.json)
+DEFAULT_INVITE_PASSWORD = os.environ.get("INVITE_PASSWORD", "SUMMARY2024")

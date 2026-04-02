@@ -1,4 +1,5 @@
 {
+  "invite_password": "SUMMARY2024",
   "recipients": [
     {
       "name": "Owner",
@@ -17,16 +18,19 @@
           "Igualdad, impacto social, género, violencia de género",
           "Gastronomía, turismo rural, agricultura, pesca, ganadería",
           "Medio ambiente, patrimonio cultural, urbanismo",
-          "Oposiciones, nombramientos, ceses de personal",
+          "Oposiciones, nombramientos, ceses, reasignaciones de personal",
+          "Proyectos aprobados/resueltos, subvenciones ya concedidas, convocatorias cerradas",
           "Educación primaria/secundaria, becas escolares",
           "Sanidad pública, farmacia, colegios profesionales"
         ]
-      }
+      },
+      "is_active": true,
+      "setup_complete": true
     },
     {
       "name": "Ainhoa",
       "chat_id": "${AINHOA_CHAT_ID}",
-      "bulletins": ["dog", "boe"],
+      "bulletins": ["dog", "boe", "eu-funding"],
       "profile": "Estudiante de máster en Global Governance and Sustainability, interesada en políticas públicas, justicia social y sostenibilidad.",
       "relevance": {
         "yes": [
@@ -45,9 +49,14 @@
           "Sector deporte, fitness, actividad física comercial",
           "Normativa fiscal específica para autónomos y pymes",
           "Contratación pública en tecnología o deporte",
-          "Gastronomía, turismo rural, agricultura industrial, pesca comercial"
+          "Oposiciones, nombramientos, ceses, reasignaciones de personal",
+          "Proyectos aprobados/resueltos, convocatorias cerradas",
+          "Gastronomía, turismo rural, agricultura industrial, pesca comercial",
+          "Evaluación de impacto ambiental"
         ]
-      }
+      },
+      "is_active": true,
+      "setup_complete": true
     }
   ]
 }

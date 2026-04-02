@@ -7,6 +7,7 @@ from telegram.constants import ParseMode
 from tg_summary.config import (
     BOE_RSS_URL,
     DOG_RSS_URL,
+    EU_FUNDING_RSS_URL,
     TELEGRAM_BOT_TOKEN,
 )
 from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
@@ -21,11 +22,13 @@ MAX_MESSAGE_LENGTH = 4096
 BULLETIN_URLS = {
     "dog": DOG_RSS_URL,
     "boe": BOE_RSS_URL,
+    "eu-funding": EU_FUNDING_RSS_URL,
 }
 
 BULLETIN_NAMES = {
     "dog": "DOG",
     "boe": "BOE",
+    "eu-funding": "EU Funding & Tenders",
 }
 
 
@@ -96,6 +99,16 @@ async def send_summary() -> None:
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
     for recipient in recipients:
+        # Skip inactive users
+        if not recipient.is_active:
+            logger.info("Skipping inactive recipient %s", recipient.name)
+            continue
+
+        # Skip users who haven't completed setup
+        if not recipient.setup_complete:
+            logger.info("Skipping recipient %s - setup not complete", recipient.name)
+            continue
+
         logger.info("Processing bulletins for %s...", recipient.name)
 
         for bulletin in recipient.bulletins:
@@ -111,6 +124,14 @@ async def send_summary() -> None:
                 bulletin, recipient.profile, recipient.relevance
             )
 
-            await _process_feed(
-                bot, recipient.chat_id, bulletin_name, rss_url, system_prompt
-            )
+            try:
+                await _process_feed(
+                    bot, recipient.chat_id, bulletin_name, rss_url, system_prompt
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to process %s for recipient %s: %s",
+                    bulletin,
+                    recipient.name,
+                    e,
+                )
