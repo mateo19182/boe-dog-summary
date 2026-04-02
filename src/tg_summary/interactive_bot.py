@@ -1,5 +1,6 @@
 """Interactive Telegram bot with user profile management."""
 
+import asyncio
 import logging
 import re
 
@@ -759,7 +760,12 @@ async def run_bot() -> None:
     await application.updater.start_polling()
 
     # Run until manually stopped
+    stop_event = asyncio.Event()
     try:
-        await application.updater.stop()
-    except Exception:
+        await stop_event.wait()
+    except asyncio.CancelledError:
         pass
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
