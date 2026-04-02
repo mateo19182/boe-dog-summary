@@ -724,9 +724,13 @@ def create_application() -> Application:
             ],
         },
         fallbacks=[
-            CommandHandler("cancel", lambda u, c: u.message.reply_text("Cancelado."))
+            CommandHandler(
+                "cancel",
+                lambda u, c: u.message.reply_text("Cancelado.") if u.message else None,
+            )
         ],
-        per_message=True,  # Required for proper state tracking across messages
+        per_user=True,
+        per_chat=True,
     )
 
     application.add_handler(conv_handler)
