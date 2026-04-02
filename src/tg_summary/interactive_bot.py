@@ -182,7 +182,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 /start &lt;contraseña&gt; - Registrarte con contraseña de invitación
 /setup - Configurar/reconfigurar tu perfil completo (wizard)
 /profile - Ver o editar tu descripción de perfil
-/topics - Editar temas de interés y exclusión
+/topicsyes - Editar temas de interés (SÍ relevantes)
+/topicsno - Editar temas excluidos (NO relevantes)
 /bulletins - Elegir qué boletines recibir (DOG, BOE, EU-funding)
 
 <b>Control:</b>
@@ -253,8 +254,8 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return WIZARD_PROFILE
 
 
-async def topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Show current topics or enter edit mode."""
+async def topicsyes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show and edit YES/relevant topics."""
     chat_id = str(update.effective_chat.id)
     existing = find_recipient_by_chat_id(chat_id)
 
@@ -264,18 +265,55 @@ async def topics_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return ConversationHandler.END
 
-    yes_topics = "\n".join([f"  ✅ {t}" for t in existing.relevance.get("yes", [])])
-    no_topics = "\n".join([f"  ❌ {t}" for t in existing.relevance.get("no", [])])
-
-    await update.message.reply_text(
-        f"📌 <b>Tus temas actuales:</b>\n\n"
-        f"<b>SÍ relevantes:</b>\n{yes_topics}\n\n"
-        f"<b>NO relevantes:</b>\n{no_topics}\n\n"
-        "Paso 1/2: Escribe temas que te interesan (separados por comas), o 'cancelar':"
+    yes_topics = (
+        "\n".join([f"  ✅ {t}" for t in existing.relevance.get("yes", [])])
+        or "  (ninguno)"
     )
 
-    context.user_data["topics_mode"] = "yes"
+    await update.message.reply_text(
+        f"📌 <b>Temas que te interesan (SÍ relevantes):</b>\n\n"
+        f"{yes_topics}\n\n"
+        "Escribe nuevos temas separados por comas para agregarlos,\n"
+        "o 'eliminar: tema1, tema2' para quitar temas existentes.\n\n"
+        "Ejemplo: 'subvenciones, IA, deporte'\n"
+        "Ejemplo: 'eliminar: agricultura, pesca'\n\n"
+        "Escribe 'cancelar' para salir sin cambios.",
+        parse_mode=ParseMode.HTML,
+    )
+
+    context.user_data["topics_edit_mode"] = "yes"
     return WIZARD_TOPICS_YES
+
+
+async def topicsno_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show and edit NO/excluded topics."""
+    chat_id = str(update.effective_chat.id)
+    existing = find_recipient_by_chat_id(chat_id)
+
+    if not existing:
+        await update.message.reply_text(
+            "❌ No estás registrado. Usa /start <contraseña> para registrarte."
+        )
+        return ConversationHandler.END
+
+    no_topics = (
+        "\n".join([f"  ❌ {t}" for t in existing.relevance.get("no", [])])
+        or "  (ninguno)"
+    )
+
+    await update.message.reply_text(
+        f"🚫 <b>Temas excluidos (NO relevantes):</b>\n\n"
+        f"{no_topics}\n\n"
+        "Escribe nuevos temas separados por comas para agregarlos,\n"
+        "o 'eliminar: tema1, tema2' para quitar temas existentes.\n\n"
+        "Ejemplo: 'agricultura, pesca, turismo'\n"
+        "Ejemplo: 'eliminar: sanidad'\n\n"
+        "Escribe 'cancelar' para salir sin cambios.",
+        parse_mode=ParseMode.HTML,
+    )
+
+    context.user_data["topics_edit_mode"] = "no"
+    return WIZARD_TOPICS_NO
 
 
 async def bulletins_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -403,22 +441,50 @@ async def wizard_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def wizard_topics_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle relevant topics (yes) step."""
     text = update.message.text.strip()
+    chat_id = str(update.effective_chat.id)
 
     if text.lower() in ["cancelar", "cancel"]:
         await update.message.reply_text("❌ Configuración cancelada.")
         return ConversationHandler.END
 
+    # Check if we're in standalone edit mode
+    if context.user_data.get("topics_edit_mode") == "yes":
+        existing = find_recipient_by_chat_id(chat_id)
+        if not existing:
+            await update.message.reply_text("❌ Error: Usuario no encontrado.")
+            return ConversationHandler.END
+
+        current_topics = existing.relevance.get("yes", []).copy()
+
+        # Check if removing topics
+        if text.lower().startswith("eliminar:") or text.lower().startswith("quitar:"):
+            remove_text = text.split(":", 1)[1].strip()
+            topics_to_remove = [t.strip() for t in remove_text.split(",") if t.strip()]
+            current_topics = [t for t in current_topics if t not in topics_to_remove]
+        else:
+            # Adding topics
+            new_topics = [t.strip() for t in text.split(",") if t.strip()]
+            current_topics = list(set(current_topics + new_topics))  # Avoid duplicates
+
+        update_recipient(
+            chat_id,
+            {
+                "relevance": {
+                    "yes": current_topics,
+                    "no": existing.relevance.get("no", []),
+                }
+            },
+        )
+        await update.message.reply_text(
+            f"✅ Temas relevantes actualizados.\n\n"
+            f"Total: {len(current_topics)} temas\n\n"
+            f"Usa /topicsyes para ver/actualizar o /summary para probar."
+        )
+        return ConversationHandler.END
+
+    # Regular wizard flow
     topics = [t.strip() for t in text.split(",") if t.strip()]
     context.user_data["profile_data"]["relevance"]["yes"] = topics
-
-    # If in topics_mode, save and exit
-    if context.user_data.get("topics_mode") == "yes":
-        await update.message.reply_text(
-            "Paso 2/2: ¿Qué temas quieres EXCLUIR?\n"
-            "Escribe temas separados por comas, o 'ninguno':"
-        )
-        context.user_data["topics_mode"] = "no"
-        return WIZARD_TOPICS_NO
 
     await update.message.reply_text(
         "Paso 3/5: ¿Qué temas quieres EXCLUIR siempre?\n"
@@ -431,26 +497,54 @@ async def wizard_topics_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def wizard_topics_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle excluded topics (no) step."""
     text = update.message.text.strip()
+    chat_id = str(update.effective_chat.id)
 
     if text.lower() in ["cancelar", "cancel"]:
         await update.message.reply_text("❌ Configuración cancelada.")
         return ConversationHandler.END
 
+    # Check if we're in standalone edit mode
+    if context.user_data.get("topics_edit_mode") == "no":
+        existing = find_recipient_by_chat_id(chat_id)
+        if not existing:
+            await update.message.reply_text("❌ Error: Usuario no encontrado.")
+            return ConversationHandler.END
+
+        current_topics = existing.relevance.get("no", []).copy()
+
+        # Check if removing topics
+        if text.lower().startswith("eliminar:") or text.lower().startswith("quitar:"):
+            remove_text = text.split(":", 1)[1].strip()
+            topics_to_remove = [t.strip() for t in remove_text.split(",") if t.strip()]
+            current_topics = [t for t in current_topics if t not in topics_to_remove]
+        else:
+            # Adding topics
+            new_topics = [t.strip() for t in text.split(",") if t.strip()]
+            current_topics = list(set(current_topics + new_topics))  # Avoid duplicates
+
+        update_recipient(
+            chat_id,
+            {
+                "relevance": {
+                    "yes": existing.relevance.get("yes", []),
+                    "no": current_topics,
+                }
+            },
+        )
+        await update.message.reply_text(
+            f"✅ Temas excluidos actualizados.\n\n"
+            f"Total: {len(current_topics)} temas\n\n"
+            f"Usa /topicsno para ver/actualizar o /summary para probar."
+        )
+        return ConversationHandler.END
+
+    # Regular wizard flow
     if text.lower() == "ninguno":
         topics = []
     else:
         topics = [t.strip() for t in text.split(",") if t.strip()]
 
     context.user_data["profile_data"]["relevance"]["no"] = topics
-
-    # If in topics_mode, save and exit
-    if context.user_data.get("topics_mode") == "no":
-        _save_profile_from_context(update, context)
-        await update.message.reply_text(
-            "✅ ¡Temas actualizados correctamente!\n\n"
-            "Usa /bulletins para cambiar boletines o /summary para un resumen."
-        )
-        return ConversationHandler.END
 
     # Show bulletin selection keyboard
     keyboard = [
@@ -705,7 +799,8 @@ def create_application() -> Application:
             CommandHandler("start", start_command),
             CommandHandler("setup", setup_command),
             CommandHandler("profile", profile_command),
-            CommandHandler("topics", topics_command),
+            CommandHandler("topicsyes", topicsyes_command),
+            CommandHandler("topicsno", topicsno_command),
         ],
         states={
             WIZARD_PROFILE: [
