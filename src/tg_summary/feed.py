@@ -1,3 +1,5 @@
+import hashlib
+
 import feedparser
 import httpx
 
@@ -15,9 +17,16 @@ def fetch_rss_entries(url: str) -> list[dict]:
                 "title": entry.get("title", ""),
                 "link": entry.get("link", ""),
                 "summary": entry.get("summary", ""),
+                "published": entry.get("published", ""),
             }
         )
     return entries
+
+
+def compute_feed_hash(entries: list[dict]) -> str:
+    """Compute a hash of the feed entries to detect changes."""
+    content = "|".join(e.get("link", "") or e.get("title", "") for e in entries)
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 def format_entries_for_prompt(entries: list[dict]) -> str:

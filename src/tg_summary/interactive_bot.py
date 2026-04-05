@@ -23,8 +23,9 @@ from tg_summary.config import (
     INVITE_PASSWORD,
     TELEGRAM_BOT_TOKEN,
 )
-from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
+from tg_summary.feed import compute_feed_hash, fetch_rss_entries, format_entries_for_prompt
 from tg_summary.llm import analyze
+from tg_summary.state import has_feed_changed, update_feed_state
 from tg_summary.markdown_fix import split_markdown_smart
 from tg_summary.recipients import (
     Recipient,
@@ -98,7 +99,7 @@ async def send_telegram_message(bot: Bot, chat_id: str, text: str) -> None:
 
 
 async def process_single_bulletin(
-    bot: Bot, chat_id: str, name: str, rss_url: str, system_prompt: str
+    bot: Bot, chat_id: str, bulletin_key: str, name: str, rss_url: str, system_prompt: str
 ) -> None:
     """Fetch an RSS feed, analyze it, and send the result to a single user."""
     logger.info("Fetching %s RSS feed for user %s...", name, chat_id)
@@ -107,7 +108,15 @@ async def process_single_bulletin(
 
     if not entries:
         await send_telegram_message(
-            bot, chat_id, f"📭 No hay nuevas entradas en {name} hoy."
+            bot, chat_id, f"No hay entradas en {name}."
+        )
+        return
+
+    # Check if feed has changed since last run
+    feed_hash = compute_feed_hash(entries)
+    if not has_feed_changed(bulletin_key, feed_hash):
+        await send_telegram_message(
+            bot, chat_id, f"{name}: sin novedades desde el ultimo envio."
         )
         return
 
@@ -119,7 +128,8 @@ async def process_single_bulletin(
     logger.info("Analyzing %s with LLM...", name)
     analysis = await analyze(entries_text, system_prompt)
 
-    await send_telegram_message(bot, chat_id, f"📰 <b>Resumen {name}</b>\n\n{analysis}")
+    await send_telegram_message(bot, chat_id, f"<b>Resumen {name}</b>\n\n{analysis}")
+    update_feed_state(bulletin_key, feed_hash)
     logger.info("%s summary sent to %s", name, chat_id)
 
 
@@ -403,7 +413,7 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         try:
             await process_single_bulletin(
-                bot, chat_id, bulletin_name, rss_url, system_prompt
+                bot, chat_id, bulletin, bulletin_name, rss_url, system_prompt
             )
         except Exception as e:
             logger.error("Failed to process %s for user %s: %s", bulletin, chat_id, e)

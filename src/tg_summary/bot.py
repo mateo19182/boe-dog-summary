@@ -1,6 +1,8 @@
 import logging
 import re
+from datetime import datetime, timezone
 
+from dateutil.parser import parse as parse_date
 from telegram import Bot
 from telegram.constants import ParseMode
 
@@ -10,10 +12,11 @@ from tg_summary.config import (
     EU_FUNDING_RSS_URL,
     TELEGRAM_BOT_TOKEN,
 )
-from tg_summary.feed import fetch_rss_entries, format_entries_for_prompt
+from tg_summary.feed import compute_feed_hash, fetch_rss_entries, format_entries_for_prompt
 from tg_summary.llm import analyze
 from tg_summary.markdown_fix import split_markdown_smart
 from tg_summary.recipients import load_recipients, build_system_prompt
+from tg_summary.state import has_feed_changed, update_feed_state
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +76,47 @@ async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
                 raise
 
 
+def _is_feed_stale(entries: list[dict]) -> bool:
+    """Check if the feed entries are from a previous day (stale)."""
+    today = datetime.now(timezone.utc).date()
+    for entry in entries[:5]:
+        pub = entry.get("published", "")
+        if not pub:
+            continue
+        try:
+            entry_date = parse_date(pub).date()
+            if entry_date >= today:
+                return False
+        except (ValueError, OverflowError):
+            continue
+    # All checked entries are older than today (or unparseable)
+    return True
+
+
 async def _process_feed(
-    bot: Bot, chat_id: str, name: str, rss_url: str, system_prompt: str
+    bot: Bot, chat_id: str, bulletin_key: str, name: str, rss_url: str, system_prompt: str
 ) -> None:
     """Fetch an RSS feed, analyze it, and send the result to Telegram."""
     logger.info("Fetching %s RSS feed...", name)
     entries = fetch_rss_entries(rss_url)
     logger.info("%s: %d entries", name, len(entries))
+
+    if not entries:
+        logger.info("%s: no entries found, skipping", name)
+        return
+
+    # Option B: check if feed content has changed since last run
+    feed_hash = compute_feed_hash(entries)
+    if not has_feed_changed(bulletin_key, feed_hash):
+        logger.info("%s: feed unchanged (hash %s), skipping", name, feed_hash)
+        return
+
+    # Option A: check if entries are stale (from a previous day)
+    if _is_feed_stale(entries):
+        logger.info("%s: feed entries are stale (not from today), skipping", name)
+        # Still update state so we don't re-check stale content on next run
+        update_feed_state(bulletin_key, feed_hash)
+        return
 
     entries_text = format_entries_for_prompt(entries)
     logger.info(
@@ -90,6 +127,7 @@ async def _process_feed(
     analysis = await analyze(entries_text, system_prompt)
 
     await _send_telegram(bot, chat_id, analysis)
+    update_feed_state(bulletin_key, feed_hash)
     logger.info("%s summary sent to %s", name, chat_id)
 
 
@@ -126,7 +164,7 @@ async def send_summary() -> None:
 
             try:
                 await _process_feed(
-                    bot, recipient.chat_id, bulletin_name, rss_url, system_prompt
+                    bot, recipient.chat_id, bulletin, bulletin_name, rss_url, system_prompt
                 )
             except Exception as e:
                 logger.error(
