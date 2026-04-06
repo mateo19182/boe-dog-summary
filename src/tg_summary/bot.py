@@ -136,7 +136,8 @@ async def _process_feed(
     logger.info("Analyzing %s with LLM...", name)
     analysis = await analyze(entries_text, system_prompt)
 
-    await _send_telegram(bot, chat_id, analysis)
+    message = f"**{name}**\n\n{analysis}"
+    await _send_telegram(bot, chat_id, message)
     update_feed_state(bulletin_key, feed_hash)
     logger.info("%s summary sent to %s", name, chat_id)
     return True

@@ -76,7 +76,8 @@ Analiza el sumario del {bulletin_full_name} y extrae SOLO items que requieran ac
 {_build_relevance_text(relevance)}
 
 {_get_format_instructions()}
-"""
+
+IMPORTANTE: Ve directo al grano. NO incluyas introducciones, saludos, ni frases como "Esta es la selección de..." o "He analizado el boletín...". Empieza directamente con el primer item relevante o, si no hay nada, con la línea indicando que no hay novedades."""
 
 
 def _resolve_env_vars(value: str) -> str:
