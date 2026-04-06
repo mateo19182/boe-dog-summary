@@ -14,5 +14,12 @@ dependencies = [
 [project.scripts]
 boe-dog-summary = "tg_summary.main:main"
 
-[tool.setuptools]
-package-dir = { "" = "src" }
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -93,30 +93,40 @@ def _is_feed_stale(entries: list[dict]) -> bool:
     return True
 
 
+NO_NEWS_MESSAGE = (
+    "No hay novedades en los boletines de hoy. "
+    "Si se publica algo relevante mas tarde, lo recibiras en el proximo envio. "
+    "Buen dia!"
+)
+
+
 async def _process_feed(
     bot: Bot, chat_id: str, bulletin_key: str, name: str, rss_url: str, system_prompt: str
-) -> None:
-    """Fetch an RSS feed, analyze it, and send the result to Telegram."""
+) -> bool:
+    """Fetch an RSS feed, analyze it, and send the result to Telegram.
+
+    Returns True if a summary was sent, False otherwise.
+    """
     logger.info("Fetching %s RSS feed...", name)
     entries = fetch_rss_entries(rss_url)
     logger.info("%s: %d entries", name, len(entries))
 
     if not entries:
         logger.info("%s: no entries found, skipping", name)
-        return
+        return False
 
     # Option B: check if feed content has changed since last run
     feed_hash = compute_feed_hash(entries)
     if not has_feed_changed(bulletin_key, feed_hash):
         logger.info("%s: feed unchanged (hash %s), skipping", name, feed_hash)
-        return
+        return False
 
     # Option A: check if entries are stale (from a previous day)
     if _is_feed_stale(entries):
         logger.info("%s: feed entries are stale (not from today), skipping", name)
         # Still update state so we don't re-check stale content on next run
         update_feed_state(bulletin_key, feed_hash)
-        return
+        return False
 
     entries_text = format_entries_for_prompt(entries)
     logger.info(
@@ -129,6 +139,7 @@ async def _process_feed(
     await _send_telegram(bot, chat_id, analysis)
     update_feed_state(bulletin_key, feed_hash)
     logger.info("%s summary sent to %s", name, chat_id)
+    return True
 
 
 async def send_summary() -> None:
@@ -149,6 +160,7 @@ async def send_summary() -> None:
 
         logger.info("Processing bulletins for %s...", recipient.name)
 
+        any_sent = False
         for bulletin in recipient.bulletins:
             if bulletin not in BULLETIN_URLS:
                 logger.warning(
@@ -163,9 +175,11 @@ async def send_summary() -> None:
             )
 
             try:
-                await _process_feed(
+                sent = await _process_feed(
                     bot, recipient.chat_id, bulletin, bulletin_name, rss_url, system_prompt
                 )
+                if sent:
+                    any_sent = True
             except Exception as e:
                 logger.error(
                     "Failed to process %s for recipient %s: %s",
@@ -173,3 +187,10 @@ async def send_summary() -> None:
                     recipient.name,
                     e,
                 )
+
+        if not any_sent:
+            logger.info("No bulletins had updates for %s, sending no-news message", recipient.name)
+            try:
+                await _send_telegram(bot, recipient.chat_id, NO_NEWS_MESSAGE)
+            except Exception as e:
+                logger.error("Failed to send no-news message to %s: %s", recipient.name, e)
