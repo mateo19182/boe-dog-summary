@@ -43,3 +43,13 @@ def format_entries_for_prompt(entries: list[dict]) -> str:
             lines.append(f"    URL: {entry['link']}")
         lines.append("")
     return "\n".join(lines)
+
+
+def fetch_feed(url: str) -> tuple[list[dict], str]:
+    """Fetch RSS entries from a URL and compute their hash.
+
+    Returns (entries, feed_hash) tuple.
+    """
+    entries = fetch_rss_entries(url)
+    feed_hash = compute_feed_hash(entries)
+    return entries, feed_hash

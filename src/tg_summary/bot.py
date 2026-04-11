@@ -12,7 +12,7 @@ from tg_summary.config import (
     EU_FUNDING_RSS_URL,
     TELEGRAM_BOT_TOKEN,
 )
-from tg_summary.feed import compute_feed_hash, fetch_rss_entries, format_entries_for_prompt
+from tg_summary.feed import fetch_feed, format_entries_for_prompt
 from tg_summary.llm import analyze
 from tg_summary.markdown_fix import split_markdown_smart
 from tg_summary.recipients import load_recipients, build_system_prompt
@@ -37,18 +37,14 @@ BULLETIN_NAMES = {
 
 def markdown_to_html(text: str) -> str:
     """Convert simple markdown to HTML for Telegram."""
-    # Convert **bold** to <b>bold</b>
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    # Convert [text](url) to <a href="url">text</a>
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
     return text
 
 
 async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
     """Send a message to Telegram using HTML format."""
-    # Convert markdown to HTML
     html_text = markdown_to_html(text)
-
     chunks = split_markdown_smart(html_text, MAX_MESSAGE_LENGTH)
 
     for i, chunk in enumerate(chunks):
@@ -61,7 +57,6 @@ async def _send_telegram(bot: Bot, chat_id: str, text: str) -> None:
             logger.info("Sent chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
         except Exception as e:
             logger.warning("Failed to send chunk %d with HTML: %s", i + 1, e)
-            # Fallback: send as plain text (strip HTML tags)
             plain_text = re.sub(r"<[^>]+>", "", chunk)
             try:
                 await bot.send_message(
@@ -89,7 +84,6 @@ def _is_feed_stale(entries: list[dict]) -> bool:
                 return False
         except (ValueError, OverflowError):
             continue
-    # All checked entries are older than today (or unparseable)
     return True
 
 
@@ -100,98 +94,100 @@ NO_NEWS_MESSAGE = (
 )
 
 
-async def _process_feed(
-    bot: Bot, chat_id: str, bulletin_key: str, name: str, rss_url: str, system_prompt: str
-) -> bool:
-    """Fetch an RSS feed, analyze it, and send the result to Telegram.
-
-    Returns True if a summary was sent, False otherwise.
-    """
-    logger.info("Fetching %s RSS feed...", name)
-    entries = fetch_rss_entries(rss_url)
-    logger.info("%s: %d entries", name, len(entries))
-
-    if not entries:
-        logger.info("%s: no entries found, skipping", name)
-        return False
-
-    # Option B: check if feed content has changed since last run
-    feed_hash = compute_feed_hash(entries)
-    if not has_feed_changed(bulletin_key, feed_hash):
-        logger.info("%s: feed unchanged (hash %s), skipping", name, feed_hash)
-        return False
-
-    # Option A: check if entries are stale (from a previous day)
-    if _is_feed_stale(entries):
-        logger.info("%s: feed entries are stale (not from today), skipping", name)
-        # Still update state so we don't re-check stale content on next run
-        update_feed_state(bulletin_key, feed_hash)
-        return False
-
-    entries_text = format_entries_for_prompt(entries)
-    logger.info(
-        "RSS snippet (%s, first 3):\n%s", name, format_entries_for_prompt(entries[:3])
-    )
-
-    logger.info("Analyzing %s with LLM...", name)
-    analysis = await analyze(entries_text, system_prompt)
-
-    message = f"**{name}**\n\n{analysis}"
-    await _send_telegram(bot, chat_id, message)
-    update_feed_state(bulletin_key, feed_hash)
-    logger.info("%s summary sent to %s", name, chat_id)
-    return True
+def prefetch_feeds() -> dict[str, tuple[list[dict], str]]:
+    """Fetch all feeds once and return {bulletin: (entries, hash)}."""
+    results = {}
+    for bulletin, url in BULLETIN_URLS.items():
+        name = BULLETIN_NAMES[bulletin]
+        logger.info("Fetching %s RSS feed...", name)
+        entries, feed_hash = fetch_feed(url)
+        logger.info("%s: %d entries, hash: %s", name, len(entries), feed_hash)
+        results[bulletin] = (entries, feed_hash)
+    return results
 
 
 async def send_summary() -> None:
-    """Fetch DOG and BOE, analyze them for each recipient with custom prompts, and send."""
+    """Fetch feeds once, analyze for each recipient with custom prompts, and send.
+
+    Strategy:
+    - Prefetch all feeds globally (each feed fetched only once)
+    - For each bulletin, check if hash changed
+    - If changed: send personalized analysis to ALL recipients who want that bulletin
+    - After all recipients processed, update global state for that bulletin
+    - If no feeds changed, send no-news message to everyone
+    """
     recipients = load_recipients()
+    active_recipients = [r for r in recipients if r.is_active and r.setup_complete]
+    if not active_recipients:
+        logger.info("No active recipients, skipping")
+        return
+
     bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
-    for recipient in recipients:
-        # Skip inactive users
-        if not recipient.is_active:
-            logger.info("Skipping inactive recipient %s", recipient.name)
+    prefetched = prefetch_feeds()
+
+    any_sent = False
+    for bulletin in BULLETIN_URLS:
+        entries, feed_hash = prefetched[bulletin]
+        name = BULLETIN_NAMES[bulletin]
+
+        if not entries:
+            logger.info("%s: no entries found, skipping", name)
             continue
 
-        # Skip users who haven't completed setup
-        if not recipient.setup_complete:
-            logger.info("Skipping recipient %s - setup not complete", recipient.name)
+        if not has_feed_changed(bulletin, feed_hash):
+            logger.info("%s: feed unchanged (hash %s), skipping", name, feed_hash)
             continue
 
-        logger.info("Processing bulletins for %s...", recipient.name)
+        if _is_feed_stale(entries):
+            logger.info("%s: feed entries are stale (not from today), skipping", name)
+            update_feed_state(bulletin, feed_hash)
+            continue
 
-        any_sent = False
-        for bulletin in recipient.bulletins:
-            if bulletin not in BULLETIN_URLS:
-                logger.warning(
-                    "Unknown bulletin '%s' for recipient %s", bulletin, recipient.name
-                )
-                continue
+        logger.info(
+            "RSS snippet (%s, first 3):\n%s",
+            name,
+            format_entries_for_prompt(entries[:3]),
+        )
 
-            rss_url = BULLETIN_URLS[bulletin]
-            bulletin_name = BULLETIN_NAMES[bulletin]
+        recipients_for_bulletin = [
+            r for r in active_recipients if bulletin in r.bulletins
+        ]
+        if not recipients_for_bulletin:
+            logger.info("No recipients want %s, skipping", name)
+            continue
+
+        for recipient in recipients_for_bulletin:
             system_prompt = build_system_prompt(
                 bulletin, recipient.profile, recipient.relevance
             )
+            entries_text = format_entries_for_prompt(entries)
 
+            logger.info("Analyzing %s with LLM for %s...", name, recipient.name)
             try:
-                sent = await _process_feed(
-                    bot, recipient.chat_id, bulletin, bulletin_name, rss_url, system_prompt
-                )
-                if sent:
-                    any_sent = True
+                analysis = await analyze(entries_text, system_prompt)
+                message = f"**{name}**\n\n{analysis}"
+                await _send_telegram(bot, recipient.chat_id, message)
+                logger.info("%s summary sent to %s", name, recipient.name)
+                any_sent = True
             except Exception as e:
                 logger.error(
-                    "Failed to process %s for recipient %s: %s",
+                    "Failed to send %s to %s: %s",
                     bulletin,
                     recipient.name,
                     e,
                 )
 
-        if not any_sent:
-            logger.info("No bulletins had updates for %s, sending no-news message", recipient.name)
+        update_feed_state(bulletin, feed_hash)
+
+    if not any_sent:
+        logger.info("No bulletins had updates, sending no-news message to all")
+        for recipient in active_recipients:
             try:
                 await _send_telegram(bot, recipient.chat_id, NO_NEWS_MESSAGE)
             except Exception as e:
-                logger.error("Failed to send no-news message to %s: %s", recipient.name, e)
+                logger.error(
+                    "Failed to send no-news message to %s: %s",
+                    recipient.name,
+                    e,
+                )
